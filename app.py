@@ -29,16 +29,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CONEXIÓN A FIREBASE (Reforzada y Autolimpiable)
+# 2. CONEXIÓN A FIREBASE (Anti-Congelamiento)
 # ==========================================
+# Solo cacheamos la "Llave" inicial, NO el cliente de la base de datos
 @st.cache_resource
-def conectar_firebase_seguro():
+def iniciar_firebase():
     if not firebase_admin._apps:
         if os.path.exists("credenciales_firebase.json"):
             cred = credentials.Certificate("credenciales_firebase.json")
         else:
             cred_dict = json.loads(st.secrets["FIREBASE_JSON"])
-            # MAGIA: Arregla automáticamente los saltos de línea rotos en la llave de Streamlit Cloud
             if "\\n" in cred_dict["private_key"]:
                 cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
             cred = credentials.Certificate(cred_dict)
@@ -46,10 +46,13 @@ def conectar_firebase_seguro():
         firebase_admin.initialize_app(cred, {
             'storageBucket': 'gestor-de-pedidos-52c82.firebasestorage.app'
         })
-    return firestore.client(), storage.bucket()
+    return True
 
 try:
-    db, bucket = conectar_firebase_seguro()
+    iniciar_firebase()
+    # Sacamos esto fuera del caché para generar una conexión fresca siempre y evitar el cuelgue infinito
+    db = firestore.client()
+    bucket = storage.bucket()
 except Exception as e:
     st.error(f"❌ Error crítico inicializando Firebase: {e}")
     st.stop()
@@ -84,22 +87,20 @@ if not st.session_state.logged_in:
     st.markdown("<h2 style='text-align: center; margin-top: 0px;'>🔐 Acceso de Deposito  (NY-COMPRAS)</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #7f8c8d; margin-top: -10px;'>Selecciona El Usuario</p>", unsafe_allow_html=True)
     
-    # --- RECUADRO DEL FORMULARIO DE LOGIN CON DIAGNÓSTICO ---
+    # --- RECUADRO DEL FORMULARIO DE LOGIN ---
     with st.container():
         st.write("---") 
         
-        # Le ponemos un cronómetro de 10 segundos. Si Firebase no responde, forzamos un error visible.
         try:
-            with st.spinner("⏳ Conectando con la Base de Datos..."):
-                docs = db.collection('perfiles_cloud').stream(timeout=10)
-                perfiles = {doc.id: doc.to_dict() for doc in docs}
+            # Quitamos el timeout estricto para dejar que la conexión fresca trabaje
+            docs = db.collection('perfiles_cloud').stream()
+            perfiles = {doc.id: doc.to_dict() for doc in docs}
         except Exception as e:
-            st.error(f"❌ FIREBASE NO RESPONDE: {e}")
-            st.info("💡 Consejo: Revisa que la Caja Fuerte de Streamlit tenga el código correcto.")
+            st.error(f"❌ Error leyendo la base de datos: {e}")
             st.stop()
             
         if not perfiles:
-            st.warning("⚠️ La conexión fue exitosa, pero no se encontraron usuarios configurados en Firebase.")
+            st.warning("⚠️ No hay perfiles configurados en la nube.")
             st.stop()
             
         perfil_sel = st.selectbox("🏢 Seleccione (Usuario)", list(perfiles.keys()))
