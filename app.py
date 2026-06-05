@@ -17,18 +17,12 @@ def hora_venezuela():
 # ==========================================
 st.set_page_config(page_title="Recepción Almacén", page_icon="📦", layout="wide")
 
-# CSS Estético, Limpio y Anti-Marcas de agua
+# CSS Estético y Seguro
 st.markdown("""
     <style>
-    /* Ocultar Header y Footer de Streamlit */
+    /* Ocultar Header y Footer de Streamlit de forma SEGURA */
     [data-testid="stHeader"] {display: none !important;}
     footer {display: none !important;}
-    
-    /* Intento agresivo de ocultar la Corona flotante (Hosted with Streamlit) */
-    .viewerBadge_container__1QSob {display: none !important;}
-    .viewerBadge_link__1S137 {display: none !important;}
-    div[data-testid="stAppViewContainer"] > div:last-child {display: none !important;}
-    #viewerBadge {display: none !important;}
     
     /* Estética de botones */
     button[data-testid="stFormSubmitButton"] {
@@ -38,7 +32,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CONEXIÓN A FIREBASE (Renombrada para limpiar caché)
+# 2. CONEXIÓN A FIREBASE
 # ==========================================
 @st.cache_resource
 def conectar_firebase_nuevo():
