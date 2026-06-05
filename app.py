@@ -7,26 +7,28 @@ import time
 import json
 import os
 
+# --- AJUSTE DE ZONA HORARIA (VENEZUELA UTC-4) ---
+def hora_venezuela():
+    """Resta 4 horas a la hora del servidor para igualar la hora de Venezuela"""
+    return datetime.utcnow() - timedelta(hours=4)
+
 # ==========================================
 # 1. CONFIGURACIÓN DE LA PÁGINA 
 # ==========================================
 st.set_page_config(page_title="Recepción Almacén", page_icon="📦", layout="wide")
 
-# CSS AGRESIVO: Ocultar todo rastro de Streamlit Cloud (Botones flotantes, menú, footer)
+# CSS Estético, Limpio y Anti-Marcas de agua
 st.markdown("""
     <style>
-    /* Ocultar Header y Menú de hamburguesa */
+    /* Ocultar Header y Footer de Streamlit */
     [data-testid="stHeader"] {display: none !important;}
-    [data-testid="stToolbar"] {display: none !important;}
-    [data-testid="stDecoration"] {display: none !important;}
-    
-    /* Ocultar Footer (Marca de agua) */
     footer {display: none !important;}
     
-    /* Ocultar Botones Flotantes de la Nube (Manage app / Deploy) */
-    .stAppDeployButton {display: none !important;}
-    [data-testid="manage-app-button"] {display: none !important;}
+    /* Intento agresivo de ocultar la Corona flotante (Hosted with Streamlit) */
     .viewerBadge_container__1QSob {display: none !important;}
+    .viewerBadge_link__1S137 {display: none !important;}
+    div[data-testid="stAppViewContainer"] > div:last-child {display: none !important;}
+    #viewerBadge {display: none !important;}
     
     /* Estética de botones */
     button[data-testid="stFormSubmitButton"] {
@@ -36,10 +38,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CONEXIÓN A FIREBASE
+# 2. CONEXIÓN A FIREBASE (Renombrada para limpiar caché)
 # ==========================================
 @st.cache_resource
-def init_firebase():
+def conectar_firebase_nuevo():
     if not firebase_admin._apps:
         if os.path.exists("credenciales_firebase.json"):
             cred = credentials.Certificate("credenciales_firebase.json")
@@ -52,7 +54,7 @@ def init_firebase():
         })
     return firestore.client(), storage.bucket()
 
-db, bucket = init_firebase()
+db, bucket = conectar_firebase_nuevo()
 
 # ==========================================
 # 3. LOGIN INTELIGENTE (Sesión por 7 días)
@@ -62,7 +64,7 @@ if "logged_in" not in st.session_state:
     if "perfil" in params and "auth" in params and params["auth"] == "true" and "expira" in params:
         try:
             fecha_expira = datetime.strptime(params["expira"], "%Y-%m-%d").date()
-            if datetime.now().date() <= fecha_expira:
+            if hora_venezuela().date() <= fecha_expira:
                 st.session_state.logged_in = True
                 st.session_state.perfil = params["perfil"]
             else:
@@ -83,29 +85,36 @@ if not st.session_state.logged_in:
     st.markdown("<h2 style='text-align: center; margin-top: 0px;'>🔐 Acceso de Deposito  (NY-COMPRAS)</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #7f8c8d; margin-top: -10px;'>Selecciona El Usuario</p>", unsafe_allow_html=True)
     
-    docs = db.collection('perfiles_cloud').stream()
-    perfiles = {doc.id: doc.to_dict() for doc in docs}
-    
-    if not perfiles:
-        st.warning("No hay perfiles configurados en la nube.")
-        st.stop()
-        
-    perfil_sel = st.selectbox("🏢 Seleccione (Usuario)", list(perfiles.keys()))
-    password = st.text_input("🔑 Contraseña ", type="password")
-    
-    if st.button("Ingresar al Sistema", use_container_width=True):
-        rif_real = perfiles[perfil_sel].get('rif', '').strip()
-        if password.strip() == rif_real and rif_real != "":
-            st.session_state.logged_in = True
-            st.session_state.perfil = perfil_sel
+    # --- RECUADRO DEL FORMULARIO DE LOGIN ---
+    with st.container(border=True):
+        try:
+            docs = db.collection('perfiles_cloud').stream()
+            perfiles = {doc.id: doc.to_dict() for doc in docs}
+        except Exception as e:
+            st.error(f"❌ Error interno conectando a Firebase: {e}")
+            st.stop()
             
-            fecha_limite = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
-            st.query_params["perfil"] = perfil_sel
-            st.query_params["auth"] = "true"
-            st.query_params["expira"] = fecha_limite
-            st.rerun()
-        else:
-            st.error("Contraseña incorrecta.")
+        if not perfiles:
+            st.warning("⚠️ No hay perfiles configurados en la nube.")
+            st.stop()
+            
+        perfil_sel = st.selectbox("🏢 Seleccione (Usuario)", list(perfiles.keys()))
+        password = st.text_input("🔑 Contraseña ", type="password")
+        st.write("") # Espaciador
+        
+        if st.button("Ingresar al Sistema", use_container_width=True, type="primary"):
+            rif_real = perfiles[perfil_sel].get('rif', '').strip()
+            if password.strip() == rif_real and rif_real != "":
+                st.session_state.logged_in = True
+                st.session_state.perfil = perfil_sel
+                
+                fecha_limite = (hora_venezuela() + timedelta(days=7)).strftime("%Y-%m-%d")
+                st.query_params["perfil"] = perfil_sel
+                st.query_params["auth"] = "true"
+                st.query_params["expira"] = fecha_limite
+                st.rerun()
+            else:
+                st.error("Contraseña incorrecta.")
     st.stop()
 
 # ==========================================
@@ -115,7 +124,7 @@ def calcular_semaforo(fecha_str, estado, dias_conf):
     try:
         fecha_corta = fecha_str.split(" ")[0]
         fecha_pedido = datetime.strptime(fecha_corta, "%d-%m-%Y").date()
-        hoy = datetime.now().date()
+        hoy = hora_venezuela().date()
         dias_transcurridos = (hoy - fecha_pedido).days
     except:
         dias_transcurridos = 0
@@ -226,7 +235,6 @@ with cols_header[0]:
     if os.path.exists("logo.png"):
         st.image("logo.png", use_container_width=True)
 with cols_header[1]:
-    # Margen ajustado para que quede exactamente alineado con el logo
     st.markdown(f"<h1 style='margin: 0; padding-top: 5px;'>📦 Recepción - {st.session_state.perfil}</h1>", unsafe_allow_html=True)
 with cols_header[2]:
     if st.button("Cerrar Sesión", use_container_width=True):
