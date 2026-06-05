@@ -32,7 +32,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CONEXIÓN A FIREBASE (A prueba de errores JSON)
+# 2. CONEXIÓN A FIREBASE (Limpia y Directa)
 # ==========================================
 @st.cache_resource
 def conectar_firebase_seguro():
@@ -40,12 +40,9 @@ def conectar_firebase_seguro():
         # Si estás en la PC de la oficina, lee el archivo físico
         if os.path.exists("credenciales_firebase.json"):
             cred = credentials.Certificate("credenciales_firebase.json")
-        # Si estás en internet, lee la Caja Fuerte
+        # Si estás en internet, lee la Caja Fuerte tal cual
         else:
             cred_dict = json.loads(st.secrets["FIREBASE_JSON"])
-            # Auto-reparador de saltos de línea por si Streamlit los rompe
-            if "\\n" in cred_dict.get("private_key", ""):
-                cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
             cred = credentials.Certificate(cred_dict)
             
         firebase_admin.initialize_app(cred, {
