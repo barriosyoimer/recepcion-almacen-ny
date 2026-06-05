@@ -7,77 +7,62 @@ import time
 import json
 import os
 
+# --- AJUSTE DE ZONA HORARIA (VENEZUELA UTC-4) ---
+def hora_venezuela():
+    """Resta 4 horas a la hora del servidor para igualar la hora de Venezuela"""
+    return datetime.utcnow() - timedelta(hours=4)
+
 # ==========================================
 # 1. CONFIGURACIÓN DE LA PÁGINA 
 # ==========================================
 st.set_page_config(page_title="Recepción Almacén", page_icon="📦", layout="wide")
 
-# Ocultar la barra de guardado por defecto de Streamlit
+# CSS Mínimo y Seguro
 st.markdown("""
     <style>
+    [data-testid="stHeader"] {display: none !important;}
+    footer {display: none !important;}
     button[data-testid="stFormSubmitButton"] {
         box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    .main-logo-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        margin-bottom: 10px;
-    }
-    .header-logo-container {
-        display: flex;
-        align-items: center;
-        gap: 15px;
-        margin-bottom: 15px;
     }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CONEXIÓN A FIREBASE Y BUCKET DE LOGO
+# 2. CONEXIÓN A FIREBASE
 # ==========================================
 @st.cache_resource
-def init_firebase():
+def conectar_firebase_seguro():
     if not firebase_admin._apps:
-        # Lógica de seguridad: Si el archivo físico existe (en tu PC), úsalo.
         if os.path.exists("credenciales_firebase.json"):
             cred = credentials.Certificate("credenciales_firebase.json")
-        # Si no existe (porque está en la nube), saca la clave de la caja fuerte de Streamlit
         else:
             cred_dict = json.loads(st.secrets["FIREBASE_JSON"])
             cred = credentials.Certificate(cred_dict)
             
-        # Conectamos con el bucket oficial de tu Firebase
         firebase_admin.initialize_app(cred, {
             'storageBucket': 'gestor-de-pedidos-52c82.firebasestorage.app'
         })
     return firestore.client(), storage.bucket()
 
-db, bucket = init_firebase()
-
-@st.cache_data(ttl=3600)
-def obtener_url_logo():
-    """Busca dinámicamente el logo de NY COMPRAS en Firebase Storage"""
-    try:
-        blob = bucket.blob("LOGO NY-COMPRAS SIN FONDO.png")
-        if blob.exists():
-            return blob.generate_signed_url(version="v4", expiration=timedelta(days=7))
-    except:
-        pass
-    return "https://cdn-icons-png.flaticon.com/512/859/859272.png"
-
-logo_url = obtener_url_logo()
+try:
+    db, bucket = conectar_firebase_seguro()
+except Exception as e:
+    st.error(f"Error crítico conectando a la base de datos: {e}")
+    st.stop()
 
 # ==========================================
-# 3. LOGIN INTELIGENTE (Sesión por 7 días)
+# 3. LOGIN INTELIGENTE Y BLINDADO
 # ==========================================
 if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.perfil = ""
+    
     params = st.query_params
-    # Revisamos si hay una sesión guardada y si aún es válida (menos de 7 días)
     if "perfil" in params and "auth" in params and params["auth"] == "true" and "expira" in params:
         try:
             fecha_expira = datetime.strptime(params["expira"], "%Y-%m-%d").date()
-            if datetime.now().date() <= fecha_expira:
+            if hora_venezuela().date() <= fecha_expira:
                 st.session_state.logged_in = True
                 st.session_state.perfil = params["perfil"]
             else:
@@ -85,44 +70,46 @@ if "logged_in" not in st.session_state:
                 st.session_state.logged_in = False
         except:
             st.session_state.logged_in = False
-    else:
-        st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    # --- LOGO CENTRADO Y MUCHO MÁS GRANDE EN EL INICIO ---
-    st.markdown(f"""
-        <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px; margin-top: 20px;">
-            <img src="{logo_url}" width="300">
-        </div>
-    """, unsafe_allow_html=True)
+    # --- LOGO GIGANTE Y CENTRADO DE FORMA NATIVA ---
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if os.path.exists("logo.png"):
+            st.image("logo.png", use_container_width=True)
     
     st.markdown("<h2 style='text-align: center; margin-top: 0px;'>🔐 Acceso de Deposito  (NY-COMPRAS)</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #7f8c8d; margin-top: -10px;'>Selecciona El Usuario</p>", unsafe_allow_html=True)
     
-    docs = db.collection('perfiles_cloud').stream()
-    perfiles = {doc.id: doc.to_dict() for doc in docs}
-    
-    if not perfiles:
-        st.warning("No hay perfiles configurados en la nube.")
-        st.stop()
-        
-    perfil_sel = st.selectbox("🏢 Seleccione (Usuario)", list(perfiles.keys()))
-    password = st.text_input("🔑 Contraseña ", type="password")
-    
-    if st.button("Ingresar al Sistema", use_container_width=True):
-        rif_real = perfiles[perfil_sel].get('rif', '').strip()
-        if password.strip() == rif_real and rif_real != "":
-            st.session_state.logged_in = True
-            st.session_state.perfil = perfil_sel
+    # --- RECUADRO DEL FORMULARIO DE LOGIN ---
+    with st.container(border=True):
+        docs = db.collection('perfiles_cloud').stream()
+        perfiles = {doc.id: doc.to_dict() for doc in docs}
             
-            # Guardamos la sesión en el navegador por 7 días
-            fecha_limite = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
-            st.query_params["perfil"] = perfil_sel
-            st.query_params["auth"] = "true"
-            st.query_params["expira"] = fecha_limite
-            st.rerun()
-        else:
-            st.error("Contraseña incorrecta.")
+        if not perfiles:
+            st.warning("⚠️ No hay perfiles configurados en la nube.")
+            st.stop()
+            
+        perfil_sel = st.selectbox("🏢 Seleccione (Usuario)", list(perfiles.keys()))
+        password = st.text_input("🔑 Contraseña ", type="password")
+        st.write("") # Espaciador
+        
+        if st.button("Ingresar al Sistema", use_container_width=True, type="primary"):
+            # AQUI ESTA LA MAGIA: Forzamos la conversión a String absoluto (str) para evitar choques
+            rif_real = str(perfiles[perfil_sel].get('rif', '')).strip()
+            pass_ingresado = str(password).strip()
+
+            if pass_ingresado == rif_real and rif_real != "":
+                st.session_state.logged_in = True
+                st.session_state.perfil = perfil_sel
+                
+                fecha_limite = (hora_venezuela() + timedelta(days=7)).strftime("%Y-%m-%d")
+                st.query_params["perfil"] = perfil_sel
+                st.query_params["auth"] = "true"
+                st.query_params["expira"] = fecha_limite
+                st.rerun()
+            else:
+                st.error("❌ Contraseña incorrecta. Por favor verifica el RIF.")
     st.stop()
 
 # ==========================================
@@ -132,7 +119,7 @@ def calcular_semaforo(fecha_str, estado, dias_conf):
     try:
         fecha_corta = fecha_str.split(" ")[0]
         fecha_pedido = datetime.strptime(fecha_corta, "%d-%m-%Y").date()
-        hoy = datetime.now().date()
+        hoy = hora_venezuela().date()
         dias_transcurridos = (hoy - fecha_pedido).days
     except:
         dias_transcurridos = 0
@@ -237,21 +224,18 @@ def abrir_panel_recepcion(pedido_id, doc_data):
 # ==========================================
 # 6. PANEL PRINCIPAL 
 # ==========================================
-cols_header = st.columns([3, 1])
+cols_header = st.columns([1, 6, 2])
 
 with cols_header[0]:
-    # --- LOGO ALINEADO AL LADO DEL PERFIL EN EL PANEL ---
-    st.markdown(f"""
-        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 10px;">
-            <img src="{logo_url}" width="75">
-            <h1 style="margin: 0; padding: 0;">📦 Recepción - {st.session_state.perfil}</h1>
-        </div>
-    """, unsafe_allow_html=True)
-
-if cols_header[1].button("Cerrar Sesión", use_container_width=True):
-    st.session_state.logged_in = False
-    st.query_params.clear() 
-    st.rerun()
+    if os.path.exists("logo.png"):
+        st.image("logo.png", use_container_width=True)
+with cols_header[1]:
+    st.markdown(f"<h1 style='margin: 0; padding-top: 5px;'>📦 Recepción - {st.session_state.perfil}</h1>", unsafe_allow_html=True)
+with cols_header[2]:
+    if st.button("Cerrar Sesión", use_container_width=True):
+        st.session_state.logged_in = False
+        st.query_params.clear() 
+        st.rerun()
 
 st.write("---")
 
