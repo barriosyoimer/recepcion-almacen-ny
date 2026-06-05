@@ -17,14 +17,9 @@ def hora_venezuela():
 # ==========================================
 st.set_page_config(page_title="Recepción Almacén", page_icon="📦", layout="wide")
 
-# CSS Estético y Seguro
+# CSS Mínimo y Seguro (Sin ocultar elementos vitales)
 st.markdown("""
     <style>
-    /* Ocultar Header y Footer de Streamlit de forma SEGURA */
-    [data-testid="stHeader"] {display: none !important;}
-    footer {display: none !important;}
-    
-    /* Estética de botones */
     button[data-testid="stFormSubmitButton"] {
         box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
     }
@@ -35,7 +30,7 @@ st.markdown("""
 # 2. CONEXIÓN A FIREBASE
 # ==========================================
 @st.cache_resource
-def conectar_firebase_nuevo():
+def conectar_firebase_seguro():
     if not firebase_admin._apps:
         if os.path.exists("credenciales_firebase.json"):
             cred = credentials.Certificate("credenciales_firebase.json")
@@ -48,7 +43,11 @@ def conectar_firebase_nuevo():
         })
     return firestore.client(), storage.bucket()
 
-db, bucket = conectar_firebase_nuevo()
+try:
+    db, bucket = conectar_firebase_seguro()
+except Exception as e:
+    st.error(f"Error crítico conectando a la base de datos: {e}")
+    st.stop()
 
 # ==========================================
 # 3. LOGIN INTELIGENTE (Sesión por 7 días)
@@ -80,13 +79,10 @@ if not st.session_state.logged_in:
     st.markdown("<p style='text-align: center; color: #7f8c8d; margin-top: -10px;'>Selecciona El Usuario</p>", unsafe_allow_html=True)
     
     # --- RECUADRO DEL FORMULARIO DE LOGIN ---
-    with st.container(border=True):
-        try:
-            docs = db.collection('perfiles_cloud').stream()
-            perfiles = {doc.id: doc.to_dict() for doc in docs}
-        except Exception as e:
-            st.error(f"❌ Error interno conectando a Firebase: {e}")
-            st.stop()
+    with st.container():
+        st.write("---") # Línea separadora limpia
+        docs = db.collection('perfiles_cloud').stream()
+        perfiles = {doc.id: doc.to_dict() for doc in docs}
             
         if not perfiles:
             st.warning("⚠️ No hay perfiles configurados en la nube.")
@@ -118,7 +114,7 @@ def calcular_semaforo(fecha_str, estado, dias_conf):
     try:
         fecha_corta = fecha_str.split(" ")[0]
         fecha_pedido = datetime.strptime(fecha_corta, "%d-%m-%Y").date()
-        hoy = hora_venezuela().date()
+        hoy = hora_venezuela().date() # Usando la hora de Venezuela
         dias_transcurridos = (hoy - fecha_pedido).days
     except:
         dias_transcurridos = 0
