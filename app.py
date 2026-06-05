@@ -12,42 +12,41 @@ import os
 # ==========================================
 st.set_page_config(page_title="Recepción Almacén", page_icon="📦", layout="wide")
 
-# Ocultar la barra de guardado por defecto de Streamlit
+# CSS AGRESIVO: Ocultar todo rastro de Streamlit Cloud (Botones flotantes, menú, footer)
 st.markdown("""
     <style>
+    /* Ocultar Header y Menú de hamburguesa */
+    [data-testid="stHeader"] {display: none !important;}
+    [data-testid="stToolbar"] {display: none !important;}
+    [data-testid="stDecoration"] {display: none !important;}
+    
+    /* Ocultar Footer (Marca de agua) */
+    footer {display: none !important;}
+    
+    /* Ocultar Botones Flotantes de la Nube (Manage app / Deploy) */
+    .stAppDeployButton {display: none !important;}
+    [data-testid="manage-app-button"] {display: none !important;}
+    .viewerBadge_container__1QSob {display: none !important;}
+    
+    /* Estética de botones */
     button[data-testid="stFormSubmitButton"] {
         box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    .main-logo-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        margin-bottom: 10px;
-    }
-    .header-logo-container {
-        display: flex;
-        align-items: center;
-        gap: 15px;
-        margin-bottom: 15px;
     }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CONEXIÓN A FIREBASE Y BUCKET DE LOGO
+# 2. CONEXIÓN A FIREBASE
 # ==========================================
 @st.cache_resource
 def init_firebase():
     if not firebase_admin._apps:
-        # Lógica de seguridad: Si el archivo físico existe (en tu PC), úsalo.
         if os.path.exists("credenciales_firebase.json"):
             cred = credentials.Certificate("credenciales_firebase.json")
-        # Si no existe (porque está en la nube), saca la clave de la caja fuerte de Streamlit
         else:
             cred_dict = json.loads(st.secrets["FIREBASE_JSON"])
             cred = credentials.Certificate(cred_dict)
             
-        # Conectamos con el bucket oficial de tu Firebase
         firebase_admin.initialize_app(cred, {
             'storageBucket': 'gestor-de-pedidos-52c82.firebasestorage.app'
         })
@@ -55,25 +54,11 @@ def init_firebase():
 
 db, bucket = init_firebase()
 
-@st.cache_data(ttl=3600)
-def obtener_url_logo():
-    """Busca dinámicamente el logo de NY COMPRAS en Firebase Storage"""
-    try:
-        blob = bucket.blob("LOGO NY-COMPRAS SIN FONDO.png")
-        if blob.exists():
-            return blob.generate_signed_url(version="v4", expiration=timedelta(days=7))
-    except:
-        pass
-    return "https://cdn-icons-png.flaticon.com/512/859/859272.png"
-
-logo_url = obtener_url_logo()
-
 # ==========================================
 # 3. LOGIN INTELIGENTE (Sesión por 7 días)
 # ==========================================
 if "logged_in" not in st.session_state:
     params = st.query_params
-    # Revisamos si hay una sesión guardada y si aún es válida (menos de 7 días)
     if "perfil" in params and "auth" in params and params["auth"] == "true" and "expira" in params:
         try:
             fecha_expira = datetime.strptime(params["expira"], "%Y-%m-%d").date()
@@ -89,12 +74,11 @@ if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    # --- LOGO CENTRADO Y MUCHO MÁS GRANDE EN EL INICIO ---
-    st.markdown(f"""
-        <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px; margin-top: 20px;">
-            <img src="{logo_url}" width="300">
-        </div>
-    """, unsafe_allow_html=True)
+    # --- LOGO GIGANTE Y CENTRADO DE FORMA NATIVA ---
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if os.path.exists("logo.png"):
+            st.image("logo.png", use_container_width=True)
     
     st.markdown("<h2 style='text-align: center; margin-top: 0px;'>🔐 Acceso de Deposito  (NY-COMPRAS)</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #7f8c8d; margin-top: -10px;'>Selecciona El Usuario</p>", unsafe_allow_html=True)
@@ -115,7 +99,6 @@ if not st.session_state.logged_in:
             st.session_state.logged_in = True
             st.session_state.perfil = perfil_sel
             
-            # Guardamos la sesión en el navegador por 7 días
             fecha_limite = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
             st.query_params["perfil"] = perfil_sel
             st.query_params["auth"] = "true"
@@ -237,21 +220,19 @@ def abrir_panel_recepcion(pedido_id, doc_data):
 # ==========================================
 # 6. PANEL PRINCIPAL 
 # ==========================================
-cols_header = st.columns([3, 1])
+cols_header = st.columns([1, 6, 2])
 
 with cols_header[0]:
-    # --- LOGO ALINEADO AL LADO DEL PERFIL EN EL PANEL ---
-    st.markdown(f"""
-        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 10px;">
-            <img src="{logo_url}" width="75">
-            <h1 style="margin: 0; padding: 0;">📦 Recepción - {st.session_state.perfil}</h1>
-        </div>
-    """, unsafe_allow_html=True)
-
-if cols_header[1].button("Cerrar Sesión", use_container_width=True):
-    st.session_state.logged_in = False
-    st.query_params.clear() 
-    st.rerun()
+    if os.path.exists("logo.png"):
+        st.image("logo.png", use_container_width=True)
+with cols_header[1]:
+    # Margen ajustado para que quede exactamente alineado con el logo
+    st.markdown(f"<h1 style='margin: 0; padding-top: 5px;'>📦 Recepción - {st.session_state.perfil}</h1>", unsafe_allow_html=True)
+with cols_header[2]:
+    if st.button("Cerrar Sesión", use_container_width=True):
+        st.session_state.logged_in = False
+        st.query_params.clear() 
+        st.rerun()
 
 st.write("---")
 
