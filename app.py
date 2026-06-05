@@ -4,6 +4,8 @@ from firebase_admin import credentials, firestore, storage
 import pandas as pd
 from datetime import datetime, timedelta
 import time
+import json
+import os
 
 # ==========================================
 # 1. CONFIGURACIÓN DE LA PÁGINA 
@@ -16,15 +18,24 @@ st.markdown("""
     button[data-testid="stFormSubmitButton"] {
         box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
     }
+    .main-logo-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    .header-logo-container {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
 # 2. CONEXIÓN A FIREBASE Y BUCKET DE LOGO
 # ==========================================
-import json
-import os
-
 @st.cache_resource
 def init_firebase():
     if not firebase_admin._apps:
@@ -43,6 +54,19 @@ def init_firebase():
     return firestore.client(), storage.bucket()
 
 db, bucket = init_firebase()
+
+@st.cache_data(ttl=3600)
+def obtener_url_logo():
+    """Busca dinámicamente el logo de NY COMPRAS en Firebase Storage"""
+    try:
+        blob = bucket.blob("LOGO NY-COMPRAS SIN FONDO.png")
+        if blob.exists():
+            return blob.generate_signed_url(version="v4", expiration=timedelta(days=7))
+    except:
+        pass
+    return "https://cdn-icons-png.flaticon.com/512/859/859272.png"
+
+logo_url = obtener_url_logo()
 
 # ==========================================
 # 3. LOGIN INTELIGENTE (Sesión por 7 días)
