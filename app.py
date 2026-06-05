@@ -9,7 +9,7 @@ import os
 
 # --- AJUSTE DE ZONA HORARIA (VENEZUELA UTC-4) ---
 def hora_venezuela():
-    """Resta 4 horas a la hora del servidor para igualar la hora de Venezuela"""
+    """Resta 4 horas a la hora del servidor para igualar la hora real"""
     return datetime.utcnow() - timedelta(hours=4)
 
 # ==========================================
@@ -17,11 +17,14 @@ def hora_venezuela():
 # ==========================================
 st.set_page_config(page_title="Recepción Almacén", page_icon="📦", layout="wide")
 
-# CSS Mínimo y Seguro
+# CSS Estético y Seguro
 st.markdown("""
     <style>
+    /* Ocultar Header y Footer de Streamlit de forma SEGURA */
     [data-testid="stHeader"] {display: none !important;}
     footer {display: none !important;}
+    
+    /* Estética de botones */
     button[data-testid="stFormSubmitButton"] {
         box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
     }
@@ -29,17 +32,19 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CONEXIÓN A FIREBASE (Anti-Congelamiento)
+# 2. CONEXIÓN A FIREBASE (A prueba de errores JSON)
 # ==========================================
-# Solo cacheamos la "Llave" inicial, NO el cliente de la base de datos
 @st.cache_resource
-def iniciar_firebase():
+def conectar_firebase_seguro():
     if not firebase_admin._apps:
+        # Si estás en la PC de la oficina, lee el archivo físico
         if os.path.exists("credenciales_firebase.json"):
             cred = credentials.Certificate("credenciales_firebase.json")
+        # Si estás en internet, lee la Caja Fuerte
         else:
             cred_dict = json.loads(st.secrets["FIREBASE_JSON"])
-            if "\\n" in cred_dict["private_key"]:
+            # Auto-reparador de saltos de línea por si Streamlit los rompe
+            if "\\n" in cred_dict.get("private_key", ""):
                 cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
             cred = credentials.Certificate(cred_dict)
             
@@ -48,9 +53,9 @@ def iniciar_firebase():
         })
     return True
 
+# Verificamos la conexión antes de arrancar
 try:
-    iniciar_firebase()
-    # Sacamos esto fuera del caché para generar una conexión fresca siempre y evitar el cuelgue infinito
+    conectar_firebase_seguro()
     db = firestore.client()
     bucket = storage.bucket()
 except Exception as e:
@@ -82,21 +87,18 @@ if not st.session_state.logged_in:
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         if os.path.exists("logo.png"):
-            st.image("logo.png", use_container_width=True)
+            st.image("logo.png")
     
     st.markdown("<h2 style='text-align: center; margin-top: 0px;'>🔐 Acceso de Deposito  (NY-COMPRAS)</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #7f8c8d; margin-top: -10px;'>Selecciona El Usuario</p>", unsafe_allow_html=True)
     
     # --- RECUADRO DEL FORMULARIO DE LOGIN ---
-    with st.container():
-        st.write("---") 
-        
+    with st.container(border=True):
         try:
-            # Quitamos el timeout estricto para dejar que la conexión fresca trabaje
             docs = db.collection('perfiles_cloud').stream()
             perfiles = {doc.id: doc.to_dict() for doc in docs}
         except Exception as e:
-            st.error(f"❌ Error leyendo la base de datos: {e}")
+            st.error(f"❌ Error leyendo perfiles de la base de datos: {e}")
             st.stop()
             
         if not perfiles:
@@ -107,7 +109,8 @@ if not st.session_state.logged_in:
         password = st.text_input("🔑 Contraseña ", type="password")
         st.write("") 
         
-        if st.button("Ingresar al Sistema", use_container_width=True, type="primary"):
+        if st.button("Ingresar al Sistema", type="primary"):
+            # Conversión forzada a texto para evitar cuelgues
             rif_real = str(perfiles[perfil_sel].get('rif', '')).strip()
             pass_ingresado = str(password).strip()
 
@@ -211,18 +214,18 @@ def abrir_panel_recepcion(pedido_id, doc_data):
         st.session_state[f"confirmar_{pedido_id}"] = False
 
     if not st.session_state[f"confirmar_{pedido_id}"]:
-        if st.button("💾 GUARDAR RECEPCIÓN", use_container_width=True, type="primary"):
+        if st.button("💾 GUARDAR RECEPCIÓN", type="primary"):
             st.session_state[f"confirmar_{pedido_id}"] = True
             st.rerun()
     else:
         st.warning(f"⚠️ **¿ESTÁS SEGURO DE RECEPCIONAR?**\n\nVa a procesar el pedido **{pedido_id}** del proveedor **{proveedor}**.")
         cols_conf = st.columns([1, 1])
         
-        if cols_conf[0].button("❌ Cancelar", use_container_width=True):
+        if cols_conf[0].button("❌ Cancelar"):
             st.session_state[f"confirmar_{pedido_id}"] = False
             st.rerun()
             
-        if cols_conf[1].button("✔️ Sí, Confirmar Recepción", use_container_width=True, type="primary"):
+        if cols_conf[1].button("✔️ Sí, Confirmar", type="primary"):
             nuevo_estado = "PARCIAL" if incompleto else "COMPLETADO"
             db.collection('pedidos_track').document(pedido_id).update({
                 'estado': nuevo_estado,
@@ -240,11 +243,11 @@ cols_header = st.columns([1, 6, 2])
 
 with cols_header[0]:
     if os.path.exists("logo.png"):
-        st.image("logo.png", use_container_width=True)
+        st.image("logo.png")
 with cols_header[1]:
     st.markdown(f"<h1 style='margin: 0; padding-top: 5px;'>📦 Recepción - {st.session_state.perfil}</h1>", unsafe_allow_html=True)
 with cols_header[2]:
-    if st.button("Cerrar Sesión", use_container_width=True):
+    if st.button("Cerrar Sesión"):
         st.session_state.logged_in = False
         st.query_params.clear() 
         st.rerun()
@@ -255,7 +258,7 @@ st.write("---")
 st.write("🔍 **Buscador de Seguimientos**")
 cols_acciones = st.columns([3, 1])
 buscador = cols_acciones[0].text_input("Ingresa ID, Laboratorio o Proveedor...", label_visibility="collapsed", placeholder="Escribe aquí para buscar...")
-bot_buscar = cols_acciones[1].button("🔍 BUSCAR", use_container_width=True)
+bot_buscar = cols_acciones[1].button("🔍 BUSCAR")
 
 st.write(" ")
 filtro_estado = st.radio(
@@ -323,7 +326,6 @@ if lista_procesada:
         
         event = st.dataframe(
             df_styled, 
-            use_container_width=True, 
             hide_index=True,
             on_select="rerun",
             selection_mode="single-row",
