@@ -1,6 +1,6 @@
 import streamlit as st
 import firebase_admin
-from firebase_admin import credentials, firestore, storage
+from firebase_admin import credentials, firestore
 import pandas as pd
 from datetime import datetime, timedelta
 import time
@@ -17,14 +17,13 @@ def hora_venezuela():
 # ==========================================
 st.set_page_config(page_title="Recepción Almacén", page_icon="📦", layout="wide")
 
-# CSS Estético y Seguro
+# CSS para ocultar el Header, Footer de Streamlit y mejorar botones
 st.markdown("""
     <style>
-    /* Ocultar Header y Footer de Streamlit de forma SEGURA */
+    /* Ocultar elementos de Streamlit */
     [data-testid="stHeader"] {display: none !important;}
     footer {display: none !important;}
     
-    /* Estética de botones */
     button[data-testid="stFormSubmitButton"] {
         box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
     }
@@ -32,41 +31,36 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CONEXIÓN A FIREBASE (Limpia y Directa)
+# 2. CONEXIÓN A FIREBASE SEGURA
 # ==========================================
 @st.cache_resource
-def conectar_firebase_seguro():
+def init_firebase():
     if not firebase_admin._apps:
-        # Si estás en la PC de la oficina, lee el archivo físico
+        # Si estás en tu PC local, usa el archivo físico
         if os.path.exists("credenciales_firebase.json"):
             cred = credentials.Certificate("credenciales_firebase.json")
-        # Si estás en internet, lee la Caja Fuerte tal cual
+        # Si estás en Streamlit Cloud (Nube), usa los Secrets
         else:
             cred_dict = json.loads(st.secrets["FIREBASE_JSON"])
             cred = credentials.Certificate(cred_dict)
             
-        firebase_admin.initialize_app(cred, {
-            'storageBucket': 'gestor-de-pedidos-52c82.firebasestorage.app'
-        })
+        firebase_admin.initialize_app(cred)
     return True
 
-# Verificamos la conexión antes de arrancar
+# Verificamos la conexión antes de arrancar la base de datos
 try:
-    conectar_firebase_seguro()
+    init_firebase()
     db = firestore.client()
-    bucket = storage.bucket()
 except Exception as e:
-    st.error(f"❌ Error crítico inicializando Firebase: {e}")
+    st.error(f"❌ Error de conexión a la Base de Datos: {e}")
     st.stop()
 
 # ==========================================
-# 3. LOGIN INTELIGENTE Y BLINDADO
+# 3. LOGIN INTELIGENTE (Sesión por 7 días)
 # ==========================================
 if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-    st.session_state.perfil = ""
-    
     params = st.query_params
+    # Revisamos si hay una sesión guardada y si aún es válida
     if "perfil" in params and "auth" in params and params["auth"] == "true" and "expira" in params:
         try:
             fecha_expira = datetime.strptime(params["expira"], "%Y-%m-%d").date()
@@ -78,50 +72,51 @@ if "logged_in" not in st.session_state:
                 st.session_state.logged_in = False
         except:
             st.session_state.logged_in = False
+    else:
+        st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    # --- LOGO GIGANTE Y CENTRADO DE FORMA NATIVA ---
+    # --- LOGO EN EL LOGIN ---
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         if os.path.exists("logo.png"):
-            st.image("logo.png")
-    
-    st.markdown("<h2 style='text-align: center; margin-top: 0px;'>🔐 Acceso de Deposito  (NY-COMPRAS)</h2>", unsafe_allow_html=True)
+            st.image("logo.png", use_container_width=True)
+
+    st.markdown("<h2 style='text-align: center; margin-top: 0px;'>🔐 Acceso de Deposito (NY-COMPRAS)</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #7f8c8d; margin-top: -10px;'>Selecciona El Usuario</p>", unsafe_allow_html=True)
     
-    # --- RECUADRO DEL FORMULARIO DE LOGIN ---
     with st.container(border=True):
         try:
             docs = db.collection('perfiles_cloud').stream()
             perfiles = {doc.id: doc.to_dict() for doc in docs}
         except Exception as e:
-            st.error(f"❌ Error leyendo perfiles de la base de datos: {e}")
+            st.error("Error leyendo usuarios.")
             st.stop()
-            
+        
         if not perfiles:
-            st.warning("⚠️ No hay perfiles configurados en la nube.")
+            st.warning("No hay perfiles configurados en la nube.")
             st.stop()
             
         perfil_sel = st.selectbox("🏢 Seleccione (Usuario)", list(perfiles.keys()))
         password = st.text_input("🔑 Contraseña ", type="password")
-        st.write("") 
+        st.write("")
         
-        if st.button("Ingresar al Sistema", type="primary"):
-            # Conversión forzada a texto para evitar cuelgues
+        if st.button("Ingresar al Sistema", use_container_width=True, type="primary"):
             rif_real = str(perfiles[perfil_sel].get('rif', '')).strip()
             pass_ingresado = str(password).strip()
-
+            
             if pass_ingresado == rif_real and rif_real != "":
                 st.session_state.logged_in = True
                 st.session_state.perfil = perfil_sel
                 
+                # Guardamos la sesión en el navegador calculando 7 días exactos hacia el futuro
                 fecha_limite = (hora_venezuela() + timedelta(days=7)).strftime("%Y-%m-%d")
                 st.query_params["perfil"] = perfil_sel
                 st.query_params["auth"] = "true"
                 st.query_params["expira"] = fecha_limite
                 st.rerun()
             else:
-                st.error("❌ Contraseña incorrecta. Por favor verifica el RIF.")
+                st.error("❌ Contraseña incorrecta.")
     st.stop()
 
 # ==========================================
@@ -211,18 +206,18 @@ def abrir_panel_recepcion(pedido_id, doc_data):
         st.session_state[f"confirmar_{pedido_id}"] = False
 
     if not st.session_state[f"confirmar_{pedido_id}"]:
-        if st.button("💾 GUARDAR RECEPCIÓN", type="primary"):
+        if st.button("💾 GUARDAR RECEPCIÓN", use_container_width=True, type="primary"):
             st.session_state[f"confirmar_{pedido_id}"] = True
             st.rerun()
     else:
         st.warning(f"⚠️ **¿ESTÁS SEGURO DE RECEPCIONAR?**\n\nVa a procesar el pedido **{pedido_id}** del proveedor **{proveedor}**.")
         cols_conf = st.columns([1, 1])
         
-        if cols_conf[0].button("❌ Cancelar"):
+        if cols_conf[0].button("❌ Cancelar", use_container_width=True):
             st.session_state[f"confirmar_{pedido_id}"] = False
             st.rerun()
             
-        if cols_conf[1].button("✔️ Sí, Confirmar", type="primary"):
+        if cols_conf[1].button("✔️ Sí, Confirmar Recepción", use_container_width=True, type="primary"):
             nuevo_estado = "PARCIAL" if incompleto else "COMPLETADO"
             db.collection('pedidos_track').document(pedido_id).update({
                 'estado': nuevo_estado,
@@ -237,14 +232,13 @@ def abrir_panel_recepcion(pedido_id, doc_data):
 # 6. PANEL PRINCIPAL 
 # ==========================================
 cols_header = st.columns([1, 6, 2])
-
 with cols_header[0]:
     if os.path.exists("logo.png"):
         st.image("logo.png")
 with cols_header[1]:
     st.markdown(f"<h1 style='margin: 0; padding-top: 5px;'>📦 Recepción - {st.session_state.perfil}</h1>", unsafe_allow_html=True)
 with cols_header[2]:
-    if st.button("Cerrar Sesión"):
+    if st.button("Cerrar Sesión", use_container_width=True):
         st.session_state.logged_in = False
         st.query_params.clear() 
         st.rerun()
@@ -255,7 +249,7 @@ st.write("---")
 st.write("🔍 **Buscador de Seguimientos**")
 cols_acciones = st.columns([3, 1])
 buscador = cols_acciones[0].text_input("Ingresa ID, Laboratorio o Proveedor...", label_visibility="collapsed", placeholder="Escribe aquí para buscar...")
-bot_buscar = cols_acciones[1].button("🔍 BUSCAR")
+bot_buscar = cols_acciones[1].button("🔍 BUSCAR", use_container_width=True)
 
 st.write(" ")
 filtro_estado = st.radio(
@@ -323,6 +317,7 @@ if lista_procesada:
         
         event = st.dataframe(
             df_styled, 
+            use_container_width=True, 
             hide_index=True,
             on_select="rerun",
             selection_mode="single-row",
