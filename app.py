@@ -36,7 +36,15 @@ st.markdown("""
 @st.cache_resource
 def init_firebase():
     if not firebase_admin._apps:
-        cred = credentials.Certificate("credenciales_firebase.json")
+        # Extraemos las credenciales de los secretos de Streamlit
+        firebase_creds = dict(st.secrets["firebase"])
+        
+        # Streamlit a veces desconfigura los saltos de línea de la clave privada, esto lo repara:
+        if "private_key" in firebase_creds:
+            firebase_creds["private_key"] = firebase_creds["private_key"].replace("\\n", "\n")
+
+        cred = credentials.Certificate(firebase_creds)
+        
         # Conectamos con el bucket oficial de tu Firebase
         firebase_admin.initialize_app(cred, {
             'storageBucket': 'gestor-de-pedidos-52c82.firebasestorage.app'
