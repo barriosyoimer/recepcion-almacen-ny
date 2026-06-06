@@ -149,12 +149,15 @@ def calcular_semaforo(fecha_str, estado, dias_conf):
     else: return "🔴 RETRASADO", dias_transcurridos
 
 def color_filas(row):
-    if "RETRASADO" in row['STATUS']: return ['background-color: #c0392b; color: white'] * len(row)
-    elif "ALERTA" in row['STATUS']: return ['background-color: #f1c40f; color: black'] * len(row)
-    elif "VERDE" in row['STATUS']: return ['background-color: #27ae60; color: white'] * len(row)
-    elif "INCOMPLETO" in row['STATUS']: return ['background-color: #d35400; color: white'] * len(row)
-    elif "COMPLETADO" in row['STATUS']: return ['background-color: #2980b9; color: white'] * len(row)
-    return [''] * len(row)
+    # Definimos el borde negro para resaltar las separaciones
+    borde = 'border: 1px solid #000000 !important; '
+    
+    if "RETRASADO" in row['STATUS']: return [borde + 'background-color: #c0392b; color: white'] * len(row)
+    elif "ALERTA" in row['STATUS']: return [borde + 'background-color: #f1c40f; color: black'] * len(row)
+    elif "VERDE" in row['STATUS']: return [borde + 'background-color: #27ae60; color: white'] * len(row)
+    elif "INCOMPLETO" in row['STATUS']: return [borde + 'background-color: #d35400; color: white'] * len(row)
+    elif "COMPLETADO" in row['STATUS']: return [borde + 'background-color: #2980b9; color: white'] * len(row)
+    return [borde] * len(row)
 
 # ==========================================
 # 5. VENTANA EMERGENTE DE RECEPCIÓN 
@@ -218,6 +221,19 @@ def abrir_panel_recepcion(pedido_id, doc_data):
             st.rerun()
     else:
         st.warning(f"⚠️ **¿ESTÁS SEGURO DE RECEPCIONAR?**\n\nVa a procesar el pedido **{pedido_id}** del proveedor **{proveedor}**.")
+        
+        # --- LÓGICA PARA MARCAR FALTANTES EN ROJO ---
+        hay_diferencias = False
+        for det in nuevos_detalles:
+            if det['cant_recibida'] < det['cant_pedida']:
+                falta = det['cant_pedida'] - det['cant_recibida']
+                st.markdown(f"<div style='color: #ff4b4b; font-weight: bold; margin-bottom: 5px;'>❌ FALTAN {falta} unds de: {det['codigo']} - {det['descripcion'][:40]}...</div>", unsafe_allow_html=True)
+                hay_diferencias = True
+        
+        if hay_diferencias:
+            st.write("---") # Línea divisora si hubo errores
+        # --------------------------------------------
+        
         cols_conf = st.columns([1, 1])
         
         if cols_conf[0].button("❌ Cancelar", use_container_width=True):
@@ -317,7 +333,11 @@ if lista_procesada:
     
     if not df.empty:
         df = df.drop(columns=['Prioridad'])
-        df_styled = df.style.apply(color_filas, axis=1)
+        
+        # Aplicamos colores de fila, bordes y centramos las columnas solicitadas
+        df_styled = (df.style
+                     .apply(color_filas, axis=1)
+                     .set_properties(subset=['DÍAS', 'LABORATORIO'], **{'text-align': 'center'}))
         
         column_config = {
             "ORDEN (PDF)": st.column_config.LinkColumn(
