@@ -21,11 +21,20 @@ def obtener_hora_actual():
 # ==========================================
 st.set_page_config(page_title="Recepción Almacén", page_icon="📦", layout="wide")
 
-# Ocultar la barra de guardado por defecto de Streamlit
+# Ocultar la barra de guardado por defecto de Streamlit e inyectar bordes oscuros en componentes
 st.markdown("""
     <style>
     button[data-testid="stFormSubmitButton"] {
         box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    /* Remarcar el contenedor del buscador y selectores con bordes más oscuros */
+    input, select, textarea {
+        border: 1px solid #111111 !important;
+    }
+    /* Borde negro exterior acentuado para resaltar firmemente el contenedor de la tabla */
+    [data-testid="stDataFrame"] {
+        border: 2px solid #000000 !important;
+        border-radius: 6px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -149,15 +158,13 @@ def calcular_semaforo(fecha_str, estado, dias_conf):
     else: return "🔴 RETRASADO", dias_transcurridos
 
 def color_filas(row):
-    # Definimos el borde negro para resaltar las separaciones
-    borde = 'border: 1px solid #000000 !important; '
-    
-    if "RETRASADO" in row['STATUS']: return [borde + 'background-color: #c0392b; color: white'] * len(row)
-    elif "ALERTA" in row['STATUS']: return [borde + 'background-color: #f1c40f; color: black'] * len(row)
-    elif "VERDE" in row['STATUS']: return [borde + 'background-color: #27ae60; color: white'] * len(row)
-    elif "INCOMPLETO" in row['STATUS']: return [borde + 'background-color: #d35400; color: white'] * len(row)
-    elif "COMPLETADO" in row['STATUS']: return [borde + 'background-color: #2980b9; color: white'] * len(row)
-    return [borde] * len(row)
+    # Retornamos los colores de fondo sólidos para mantener un contraste óptimo en el motor de canvas
+    if "RETRASADO" in row['STATUS']: return ['background-color: #c0392b; color: white'] * len(row)
+    elif "ALERTA" in row['STATUS']: return ['background-color: #f1c40f; color: black'] * len(row)
+    elif "VERDE" in row['STATUS']: return ['background-color: #27ae60; color: white'] * len(row)
+    elif "INCOMPLETO" in row['STATUS']: return ['background-color: #d35400; color: white'] * len(row)
+    elif "COMPLETADO" in row['STATUS']: return ['background-color: #2980b9; color: white'] * len(row)
+    return [''] * len(row)
 
 # ==========================================
 # 5. VENTANA EMERGENTE DE RECEPCIÓN 
@@ -333,13 +340,15 @@ if lista_procesada:
     
     if not df.empty:
         df = df.drop(columns=['Prioridad'])
+        df_styled = df.style.apply(color_filas, axis=1)
         
-        # Aplicamos colores de fila, bordes y centramos las columnas solicitadas
-        df_styled = (df.style
-                     .apply(color_filas, axis=1)
-                     .set_properties(subset=['DÍAS', 'LABORATORIO'], **{'text-align': 'center'}))
-        
+        # --- SOLUCIÓN DE CENTRADO NATIVO ESTRICTO ---
+        # Configuramos la alineación directamente en las especificaciones de la tabla
         column_config = {
+            "STATUS": st.column_config.Column(alignment="center"),
+            "DÍAS": st.column_config.Column(alignment="center"),
+            "LABORATORIO": st.column_config.Column(alignment="center"),
+            "FECHA": st.column_config.Column(alignment="center"),
             "ORDEN (PDF)": st.column_config.LinkColumn(
                 "📄 PDF",
                 display_text="📥 Descargar"
