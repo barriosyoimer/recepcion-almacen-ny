@@ -124,7 +124,6 @@ if not st.session_state.logged_in:
             st.session_state.perfil = perfil_sel
             
             # Guardamos la sesión en el navegador por 7 días
-            # MODIFICADO: Usar hora localizada para calcular la expiración
             fecha_limite = (obtener_hora_actual() + timedelta(days=7)).strftime("%Y-%m-%d")
             st.query_params["perfil"] = perfil_sel
             st.query_params["auth"] = "true"
@@ -141,7 +140,6 @@ def calcular_semaforo(fecha_str, estado, dias_conf):
     try:
         fecha_corta = fecha_str.split(" ")[0]
         fecha_pedido = datetime.strptime(fecha_corta, "%d-%m-%Y").date()
-        # MODIFICADO: Usar hora localizada para calcular los días transcurridos
         hoy = obtener_hora_actual().date()
         dias_transcurridos = (hoy - fecha_pedido).days
     except:
@@ -158,7 +156,6 @@ def calcular_semaforo(fecha_str, estado, dias_conf):
     else: return "🔴 RETRASADO", dias_transcurridos
 
 def color_filas(row):
-    # Retornamos los colores de fondo sólidos para mantener un contraste óptimo en el motor de canvas
     if "RETRASADO" in row['STATUS']: return ['background-color: #c0392b; color: white'] * len(row)
     elif "ALERTA" in row['STATUS']: return ['background-color: #f1c40f; color: black'] * len(row)
     elif "VERDE" in row['STATUS']: return ['background-color: #27ae60; color: white'] * len(row)
@@ -238,9 +235,9 @@ def abrir_panel_recepcion(pedido_id, doc_data):
                 hay_diferencias = True
         
         if hay_diferencias:
-            st.write("---") # Línea divisora si hubo errores
+            st.write("---") 
         # --------------------------------------------
-        
+
         cols_conf = st.columns([1, 1])
         
         if cols_conf[0].button("❌ Cancelar", use_container_width=True):
@@ -264,7 +261,6 @@ def abrir_panel_recepcion(pedido_id, doc_data):
 cols_header = st.columns([3, 1])
 
 with cols_header[0]:
-    # --- LOGO ALINEADO AL LADO DEL PERFIL EN EL PANEL ---
     st.markdown(f"""
         <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 10px;">
             <img src="{logo_url}" width="75">
@@ -286,12 +282,25 @@ buscador = cols_acciones[0].text_input("Ingresa ID, Laboratorio o Proveedor...",
 bot_buscar = cols_acciones[1].button("🔍 BUSCAR", use_container_width=True)
 
 st.write(" ")
-filtro_estado = st.radio(
+
+# --- NUEVO: CONTADOR DE PEDIDOS EN CAMINO PARA LA WEB ---
+try:
+    docs_camino = db.collection('pedidos_track').where('perfil', '==', st.session_state.perfil).where('estado', '==', 'EN CAMINO').stream()
+    contador_camino = sum(1 for _ in docs_camino)
+except:
+    contador_camino = 0
+
+opcion_camino = f"EN CAMINO ({contador_camino})"
+
+filtro_seleccionado = st.radio(
     "📌 Filtrar Tabla por Estado:",
-    ["EN CAMINO", "PARCIAL", "COMPLETADO", "TODOS"],
+    [opcion_camino, "PARCIAL", "COMPLETADO", "TODOS"],
     index=0, 
     horizontal=True
 )
+
+# Normalizamos el filtro seleccionado para las consultas en base de datos
+filtro_estado = "EN CAMINO" if filtro_seleccionado == opcion_camino else filtro_seleccionado
 
 dias_docs = db.collection('prov_dias').stream()
 dict_dias = {d.id: d.to_dict().get('dias_estimados', 3) for d in dias_docs}
@@ -303,6 +312,7 @@ else:
 
 lista_procesada = []
 pedidos_raw = {}
+dias_semana = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO"]
 
 for doc in pedidos_docs:
     d = doc.to_dict()
@@ -323,9 +333,16 @@ for doc in pedidos_docs:
     elif "INCOMPLETO" in semaforo: p = 3
     else: p = 4
     
+    # --- NUEVO: FORMATEO DE FECHA ESTILO ESCRITORIO ---
+    try:
+        dt = datetime.strptime(f_str, "%d-%m-%Y %I:%M %p")
+        fecha_formateada = f"{dt.strftime('%d-%m')}   {dt.strftime('%I:%M %p')}  ({dias_semana[dt.weekday()]})"
+    except: 
+        fecha_formateada = f_str
+        
     lista_procesada.append({
         'Prioridad': p, 'STATUS': semaforo, 'ID': id_t, 
-        'DÍAS': dias, 'FECHA': f_str, 'LABORATORIO': lab, 'PROVEEDOR': prov,
+        'DÍAS': dias, 'FECHA': fecha_formateada, 'LABORATORIO': lab, 'PROVEEDOR': prov,
         'ORDEN (PDF)': url_pdf
     })
 
@@ -343,12 +360,12 @@ if lista_procesada:
         df_styled = df.style.apply(color_filas, axis=1)
         
         # --- SOLUCIÓN DE CENTRADO NATIVO ESTRICTO ---
-        # Configuramos la alineación directamente en las especificaciones de la tabla
         column_config = {
             "STATUS": st.column_config.Column(alignment="center"),
             "DÍAS": st.column_config.Column(alignment="center"),
             "LABORATORIO": st.column_config.Column(alignment="center"),
             "FECHA": st.column_config.Column(alignment="center"),
+            "PROVEEDOR": st.column_config.Column(alignment="center"),
             "ORDEN (PDF)": st.column_config.LinkColumn(
                 "📄 PDF",
                 display_text="📥 Descargar"
