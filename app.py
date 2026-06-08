@@ -9,11 +9,9 @@ import pytz
 # ==========================================
 # 0. CONFIGURACIÓN DE ZONA HORARIA
 # ==========================================
-# Definir la zona horaria a utilizar
 ZONA_VNZ = pytz.timezone('America/Caracas')
 
 def obtener_hora_actual():
-    """Retorna la fecha y hora exacta localizada"""
     return datetime.now(ZONA_VNZ)
 
 # ==========================================
@@ -21,17 +19,14 @@ def obtener_hora_actual():
 # ==========================================
 st.set_page_config(page_title="Recepción Almacén", page_icon="📦", layout="wide")
 
-# Ocultar la barra de guardado por defecto de Streamlit e inyectar bordes oscuros en componentes
 st.markdown("""
     <style>
     button[data-testid="stFormSubmitButton"] {
         box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
     }
-    /* Remarcar el contenedor del buscador y selectores con bordes más oscuros */
     input, select, textarea {
         border: 1px solid #111111 !important;
     }
-    /* Borde negro exterior acentuado para resaltar firmemente el contenedor de la tabla */
     [data-testid="stDataFrame"] {
         border: 2px solid #000000 !important;
         border-radius: 6px;
@@ -45,16 +40,11 @@ st.markdown("""
 @st.cache_resource
 def init_firebase():
     if not firebase_admin._apps:
-        # Extraemos las credenciales de los secretos de Streamlit
         firebase_creds = dict(st.secrets["firebase"])
-        
-        # Streamlit a veces desconfigura los saltos de línea de la clave privada, esto lo repara:
         if "private_key" in firebase_creds:
             firebase_creds["private_key"] = firebase_creds["private_key"].replace("\\n", "\n")
 
         cred = credentials.Certificate(firebase_creds)
-        
-        # Conectamos con el bucket oficial de tu Firebase
         firebase_admin.initialize_app(cred, {
             'storageBucket': 'gestor-de-pedidos-52c82.firebasestorage.app'
         })
@@ -64,7 +54,6 @@ db, bucket = init_firebase()
 
 @st.cache_data(ttl=3600)
 def obtener_url_logo():
-    """Busca dinámicamente el logo de NY COMPRAS en Firebase Storage"""
     try:
         blob = bucket.blob("LOGO NY-COMPRAS SIN FONDO.png")
         if blob.exists():
@@ -76,15 +65,13 @@ def obtener_url_logo():
 logo_url = obtener_url_logo()
 
 # ==========================================
-# 3. LOGIN INTELIGENTE (Sesión por 7 días)
+# 3. LOGIN INTELIGENTE
 # ==========================================
 if "logged_in" not in st.session_state:
     params = st.query_params
-    # Revisamos si hay una sesión guardada y si aún es válida (menos de 7 días)
     if "perfil" in params and "auth" in params and params["auth"] == "true" and "expira" in params:
         try:
             fecha_expira = datetime.strptime(params["expira"], "%Y-%m-%d").date()
-            # MODIFICADO: Usar hora localizada
             if obtener_hora_actual().date() <= fecha_expira:
                 st.session_state.logged_in = True
                 st.session_state.perfil = params["perfil"]
@@ -97,7 +84,6 @@ if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
-    # --- LOGO CENTRADO Y MUCHO MÁS GRANDE EN EL INICIO ---
     st.markdown(f"""
         <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px; margin-top: 20px;">
             <img src="{logo_url}" width="300">
@@ -122,8 +108,6 @@ if not st.session_state.logged_in:
         if password.strip() == rif_real and rif_real != "":
             st.session_state.logged_in = True
             st.session_state.perfil = perfil_sel
-            
-            # Guardamos la sesión en el navegador por 7 días
             fecha_limite = (obtener_hora_actual() + timedelta(days=7)).strftime("%Y-%m-%d")
             st.query_params["perfil"] = perfil_sel
             st.query_params["auth"] = "true"
@@ -179,7 +163,7 @@ def abrir_panel_recepcion(pedido_id, doc_data):
         st.markdown(f"**📄 [Descargar Orden de Compra (PDF)]({url_pdf})**")
         
     st.write("---")
-    st.info("💡 Consejo: Al cambiar una cantidad, puedes presionar Enter, hacer clic afuera o pasar a la siguiente casilla. Todo se guarda automáticamente en memoria antes de enviar.")
+    st.info("💡 Consejo: Escribe el símbolo de PUNTO ( . ) para marcar el producto como devuelto por FECHA PRÓXIMA.")
     
     detalles = doc_data.get('detalles', [])
     estado_actual = doc_data.get('estado', 'EN CAMINO')
@@ -192,28 +176,42 @@ def abrir_panel_recepcion(pedido_id, doc_data):
         desc = det.get('descripcion', '')
         pedida = int(det.get('cant_pedida', 0))
         recibida_db = int(det.get('cant_recibida', 0))
+        nota_db = det.get('nota', '')
+        
         cant_inicial = pedida if estado_actual == "EN CAMINO" else recibida_db
+        val_inicial = "." if nota_db == "fecha_proxima" else str(cant_inicial)
         
         st.write(f"**{cod}** - {desc[:50]}...")
         cols_art = st.columns([1, 1])
         cols_art[0].metric("Pedida", pedida)
         
-        llegada = cols_art[1].number_input(
+        llegada_str = cols_art[1].text_input(
             f"Llegó ({cod})", 
-            min_value=0, 
-            max_value=pedida, 
-            value=cant_inicial, 
+            value=val_inicial, 
             key=f"val_{pedido_id}_{cod}",
             label_visibility="collapsed"
         )
         st.divider()
         
-        if llegada < pedida:
+        llegada_str = llegada_str.strip()
+        nota_actual = ""
+        
+        if llegada_str == ".":
+            llegada = 0
             incompleto = True
+            nota_actual = "fecha_proxima"
+        else:
+            try:
+                llegada = int(llegada_str)
+            except:
+                llegada = 0
+            if llegada < pedida:
+                incompleto = True
             
         nuevos_detalles.append({
             'codigo': cod, 'descripcion': desc,
-            'cant_pedida': pedida, 'cant_recibida': llegada
+            'cant_pedida': pedida, 'cant_recibida': llegada,
+            'nota': nota_actual
         })
     
     if f"confirmar_{pedido_id}" not in st.session_state:
@@ -226,17 +224,18 @@ def abrir_panel_recepcion(pedido_id, doc_data):
     else:
         st.warning(f"⚠️ **¿ESTÁS SEGURO DE RECEPCIONAR?**\n\nVa a procesar el pedido **{pedido_id}** del proveedor **{proveedor}**.")
         
-        # --- LÓGICA PARA MARCAR FALTANTES EN ROJO ---
         hay_diferencias = False
         for det in nuevos_detalles:
-            if det['cant_recibida'] < det['cant_pedida']:
+            if det.get('nota') == "fecha_proxima":
+                st.markdown(f"<div style='color: #e67e22; font-weight: bold; margin-bottom: 5px;'>📅 DEVUELTO (FECHA PRÓXIMA): {det['codigo']} - {det['descripcion'][:40]}...</div>", unsafe_allow_html=True)
+                hay_diferencias = True
+            elif det['cant_recibida'] < det['cant_pedida']:
                 falta = det['cant_pedida'] - det['cant_recibida']
                 st.markdown(f"<div style='color: #ff4b4b; font-weight: bold; margin-bottom: 5px;'>❌ FALTAN {falta} unds de: {det['codigo']} - {det['descripcion'][:40]}...</div>", unsafe_allow_html=True)
                 hay_diferencias = True
         
         if hay_diferencias:
             st.write("---") 
-        # --------------------------------------------
 
         cols_conf = st.columns([1, 1])
         
@@ -283,7 +282,6 @@ bot_buscar = cols_acciones[1].button("🔍 BUSCAR", use_container_width=True)
 
 st.write(" ")
 
-# --- NUEVO: CONTADOR DE PEDIDOS EN CAMINO PARA LA WEB ---
 try:
     docs_camino = db.collection('pedidos_track').where('perfil', '==', st.session_state.perfil).where('estado', '==', 'EN CAMINO').stream()
     contador_camino = sum(1 for _ in docs_camino)
@@ -299,7 +297,6 @@ filtro_seleccionado = st.radio(
     horizontal=True
 )
 
-# Normalizamos el filtro seleccionado para las consultas en base de datos
 filtro_estado = "EN CAMINO" if filtro_seleccionado == opcion_camino else filtro_seleccionado
 
 dias_docs = db.collection('prov_dias').stream()
@@ -333,7 +330,6 @@ for doc in pedidos_docs:
     elif "INCOMPLETO" in semaforo: p = 3
     else: p = 4
     
-    # --- NUEVO: FORMATEO DE FECHA ESTILO ESCRITORIO ---
     try:
         dt = datetime.strptime(f_str, "%d-%m-%Y %I:%M %p")
         fecha_formateada = f"{dt.strftime('%d-%m')}   {dt.strftime('%I:%M %p')}  ({dias_semana[dt.weekday()]})"
@@ -359,7 +355,6 @@ if lista_procesada:
         df = df.drop(columns=['Prioridad'])
         df_styled = df.style.apply(color_filas, axis=1)
         
-        # --- SOLUCIÓN DE CENTRADO NATIVO ESTRICTO ---
         column_config = {
             "STATUS": st.column_config.Column(alignment="center"),
             "DÍAS": st.column_config.Column(alignment="center"),
