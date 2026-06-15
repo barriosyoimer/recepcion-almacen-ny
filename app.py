@@ -120,12 +120,25 @@ if not st.session_state.logged_in:
 # ==========================================
 # 4. FUNCIONES LOGÍSTICAS
 # ==========================================
+
+def calcular_dias_habiles(fecha_inicio, fecha_fin):
+    """Calcula los días transcurridos omitiendo Sábado (5) y Domingo (6)"""
+    dias_habiles = 0
+    dia_actual = fecha_inicio
+    while dia_actual < fecha_fin:
+        dia_actual += timedelta(days=1)
+        if dia_actual.weekday() < 5: 
+            dias_habiles += 1
+    return dias_habiles
+
 def calcular_semaforo(fecha_str, estado, dias_conf):
     try:
         fecha_corta = fecha_str.split(" ")[0]
         fecha_pedido = datetime.strptime(fecha_corta, "%d-%m-%Y").date()
         hoy = obtener_hora_actual().date()
-        dias_transcurridos = (hoy - fecha_pedido).days
+        
+        # AQUÍ APLICAMOS LA NUEVA LÓGICA DE DÍAS HÁBILES
+        dias_transcurridos = calcular_dias_habiles(fecha_pedido, hoy)
     except:
         dias_transcurridos = 0
 
