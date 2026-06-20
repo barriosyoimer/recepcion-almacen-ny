@@ -265,6 +265,7 @@ def abrir_panel_recepcion(pedido_id, doc_data):
             st.success(f"¡Pedido {pedido_id} guardado con éxito como {nuevo_estado}!")
             st.session_state[f"confirmar_{pedido_id}"] = False
             time.sleep(1)
+            st.cache_data.clear() # <--- NUEVA LÍNEA: Borra la memoria para forzar recarga fresca
             st.rerun()
 
 # ==========================================
