@@ -295,12 +295,25 @@ bot_buscar = cols_acciones[1].button("🔍 BUSCAR", use_container_width=True)
 
 st.write(" ")
 
-try:
-    docs_camino = db.collection('pedidos_track').where('perfil', '==', st.session_state.perfil).where('estado', '==', 'EN CAMINO').stream()
-    contador_camino = sum(1 for _ in docs_camino)
-except:
-    contador_camino = 0
+# =========================================================================
+# FUNCIONES DE OPTIMIZACIÓN CON CACHÉ (EVITA LECTURAS DUPLICADAS EN LA WEB)
+# =========================================================================
+@st.cache_data(ttl=120) # Guarda los pedidos en memoria por 2 minutos
+def obtener_pedidos_por_perfil(perfil_usuario):
+    # Consulta ESTRICTA: Solo descarga los documentos que pertenecen a este perfil
+    docs = db.collection('pedidos_track').where('perfil', '==', perfil_usuario).stream()
+    return [doc.to_dict() for doc in docs]
 
+@st.cache_data(ttl=600) # Guarda los días de proveedores por 10 minutos (cambian poco)
+def obtener_dict_dias_proveedores():
+    dias_docs = db.collection('prov_dias').stream()
+    return {d.id: d.to_dict().get('dias_estimados', 3) for d in dias_docs}
+
+# 1. Descarga TODOS los pedidos del perfil a la memoria (Costo Firebase: Solo 1 vez cada 2 minutos)
+todos_los_pedidos = obtener_pedidos_por_perfil(st.session_state.perfil)
+
+# 2. Cuenta los pedidos "EN CAMINO" directamente en memoria usando Python (Costo Firebase: $0)
+contador_camino = sum(1 for p in todos_los_pedidos if p.get('estado') == 'EN CAMINO')
 opcion_camino = f"EN CAMINO ({contador_camino})"
 
 filtro_seleccionado = st.radio(
@@ -312,20 +325,21 @@ filtro_seleccionado = st.radio(
 
 filtro_estado = "EN CAMINO" if filtro_seleccionado == opcion_camino else filtro_seleccionado
 
-dias_docs = db.collection('prov_dias').stream()
-dict_dias = {d.id: d.to_dict().get('dias_estimados', 3) for d in dias_docs}
+# 3. Trae los días de los proveedores desde la caché de la web (Costo Firebase: $0)
+dict_dias = obtener_dict_dias_proveedores()
 
+# 4. Filtra el listado en memoria según el estado seleccionado (Costo Firebase: $0)
 if filtro_estado == "TODOS":
-    pedidos_docs = db.collection('pedidos_track').where('perfil', '==', st.session_state.perfil).stream()
+    pedidos_filtrados = todos_los_pedidos
 else:
-    pedidos_docs = db.collection('pedidos_track').where('perfil', '==', st.session_state.perfil).where('estado', '==', filtro_estado).stream()
+    pedidos_filtrados = [p for p in todos_los_pedidos if p.get('estado') == filtro_estado]
 
 lista_procesada = []
 pedidos_raw = {}
 dias_semana = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO"]
 
-for doc in pedidos_docs:
-    d = doc.to_dict()
+# 5. Ejecuta el bucle directamente con los datos procesados en memoria
+for d in pedidos_filtrados:
     id_t = d.get('id_tracking')
     prov = d.get('proveedor', '')
     lab = d.get('laboratorio', '')
