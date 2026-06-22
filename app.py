@@ -344,20 +344,32 @@ def obtener_dias_proveedores():
 
 
 # --- INTERFAZ DE FILTROS ---
+# 1. Cargamos el paquete de pedidos activos a la memoria de la web
+pedidos_activos_memoria = obtener_pedidos_activos(st.session_state.perfil)
+dict_dias = obtener_dias_proveedores()
+
+# 2. Contamos usando Python (Costo Firebase $0)
+contador_camino = sum(1 for p in pedidos_activos_memoria if p.get('estado') == 'EN CAMINO')
+opcion_camino = f"EN CAMINO ({contador_camino})"
+
 filtro_seleccionado = st.radio(
     "📌 Filtrar Tabla por Estado:",
-    ["EN CAMINO / PARCIAL", "COMPLETADO (Historial Reciente)"],
+    [opcion_camino, "PARCIAL", "COMPLETADO (Historial)"],
     index=0, 
     horizontal=True
 )
 
-# 1. Cargamos los días de proveedores de forma segura
-dict_dias = obtener_dias_proveedores()
-
-# 2. Consumo inteligente basado en la pestaña activa
-if filtro_seleccionado == "EN CAMINO / PARCIAL":
-    pedidos_filtrados = obtener_pedidos_activos(st.session_state.perfil)
+# 3. Lógica de separación ultra-eficiente
+if filtro_seleccionado == opcion_camino:
+    # Filtramos la memoria local (Costo $0)
+    pedidos_filtrados = [p for p in pedidos_activos_memoria if p.get('estado') == 'EN CAMINO']
+    
+elif filtro_seleccionado == "PARCIAL":
+    # Filtramos la memoria local (Costo $0)
+    pedidos_filtrados = [p for p in pedidos_activos_memoria if p.get('estado') == 'PARCIAL']
+    
 else:
+    # Solo descarga el historial si hacen clic explícitamente en "COMPLETADO"
     pedidos_filtrados = obtener_pedidos_completados(st.session_state.perfil, limite=50)
 
 lista_procesada = []
