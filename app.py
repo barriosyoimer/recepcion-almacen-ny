@@ -21,6 +21,17 @@ st.set_page_config(page_title="Recepción Almacén", page_icon="📦", layout="w
 
 st.markdown("""
     <style>
+    /* 1. Ocultar el menú superior (GitHub y opciones de Streamlit) */
+    [data-testid="stToolbar"] {
+        visibility: hidden !important;
+    }
+    
+    /* 2. Ocultar la marca de agua inferior (Made with Streamlit) */
+    footer {
+        visibility: hidden !important;
+    }
+
+    /* 3. Tus estilos originales intactos */
     button[data-testid="stFormSubmitButton"] {
         box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
     }
@@ -262,10 +273,15 @@ def abrir_panel_recepcion(pedido_id, doc_data):
                 'estado': nuevo_estado,
                 'detalles': nuevos_detalles
             })
-            st.success(f"¡Pedido {pedido_id} guardado con éxito como {nuevo_estado}!")
+            st.success(f"¡Pedido {pedido_id} guardado con éxito!")
             st.session_state[f"confirmar_{pedido_id}"] = False
             time.sleep(1)
-            st.cache_data.clear() # <--- NUEVA LÍNEA: Borra la memoria para forzar recarga fresca
+            
+            # REEMPLAZO QUIRÚRGICO: Solo borra la caché de pedidos activos de esta sede.
+            # Deja intactos los logos, estilos y la lista de días de proveedores.
+            obtener_pedidos_activos.clear()
+            obtener_pedidos_completados.clear()
+            
             st.rerun()
 
 # ==========================================
@@ -297,49 +313,58 @@ bot_buscar = cols_acciones[1].button("🔍 BUSCAR", use_container_width=True)
 st.write(" ")
 
 # =========================================================================
-# FUNCIONES DE OPTIMIZACIÓN CON CACHÉ (EVITA LECTURAS DUPLICADAS EN LA WEB)
+# COMPORTAMIENTO ULTRA-ESCALABLE (FILTRADO EN SERVIDOR)
 # =========================================================================
-@st.cache_data(ttl=120) # Guarda los pedidos en memoria por 2 minutos
-def obtener_pedidos_por_perfil(perfil_usuario):
-    # Consulta ESTRICTA: Solo descarga los documentos que pertenecen a este perfil
-    docs = db.collection('pedidos_track').where('perfil', '==', perfil_usuario).stream()
+
+@st.cache_data(ttl=120)
+def obtener_pedidos_activos(perfil_usuario):
+    """Descarga EXCLUSIVAMENTE lo pendiente. Si hay 10,000 completados, Firebase los ignora."""
+    # NOTA: Esta consulta requiere un índice compuesto en la consola de Firebase.
+    docs = db.collection('pedidos_track')\
+             .where('perfil', '==', perfil_usuario)\
+             .where('estado', 'in', ['EN CAMINO', 'PARCIAL'])\
+             .stream()
     return [doc.to_dict() for doc in docs]
 
-@st.cache_data(ttl=600) # Guarda los días de proveedores por 10 minutos (cambian poco)
-def obtener_dict_dias_proveedores():
+@st.cache_data(ttl=300)
+def obtener_pedidos_completados(perfil_usuario, limite=50):
+    """Solo descarga el historial viejo si el usuario lo solicita, limitado a los últimos registros."""
+    docs = db.collection('pedidos_track')\
+             .where('perfil', '==', perfil_usuario)\
+             .where('estado', '==', 'COMPLETADO')\
+             .limit(limite)\
+             .stream()
+    return [doc.to_dict() for doc in docs]
+
+@st.cache_data(ttl=600)
+def obtener_dias_proveedores():
+    """Esta caché ya no se destruirá cuando se reciba un pedido"""
     dias_docs = db.collection('prov_dias').stream()
     return {d.id: d.to_dict().get('dias_estimados', 3) for d in dias_docs}
 
-# 1. Descarga TODOS los pedidos del perfil a la memoria (Costo Firebase: Solo 1 vez cada 2 minutos)
-todos_los_pedidos = obtener_pedidos_por_perfil(st.session_state.perfil)
 
-# 2. Cuenta los pedidos "EN CAMINO" directamente en memoria usando Python (Costo Firebase: $0)
-contador_camino = sum(1 for p in todos_los_pedidos if p.get('estado') == 'EN CAMINO')
-opcion_camino = f"EN CAMINO ({contador_camino})"
-
+# --- INTERFAZ DE FILTROS ---
 filtro_seleccionado = st.radio(
     "📌 Filtrar Tabla por Estado:",
-    [opcion_camino, "PARCIAL", "COMPLETADO", "TODOS"],
+    ["EN CAMINO / PARCIAL", "COMPLETADO (Historial Reciente)"],
     index=0, 
     horizontal=True
 )
 
-filtro_estado = "EN CAMINO" if filtro_seleccionado == opcion_camino else filtro_seleccionado
+# 1. Cargamos los días de proveedores de forma segura
+dict_dias = obtener_dias_proveedores()
 
-# 3. Trae los días de los proveedores desde la caché de la web (Costo Firebase: $0)
-dict_dias = obtener_dict_dias_proveedores()
-
-# 4. Filtra el listado en memoria según el estado seleccionado (Costo Firebase: $0)
-if filtro_estado == "TODOS":
-    pedidos_filtrados = todos_los_pedidos
+# 2. Consumo inteligente basado en la pestaña activa
+if filtro_seleccionado == "EN CAMINO / PARCIAL":
+    pedidos_filtrados = obtener_pedidos_activos(st.session_state.perfil)
 else:
-    pedidos_filtrados = [p for p in todos_los_pedidos if p.get('estado') == filtro_estado]
+    pedidos_filtrados = obtener_pedidos_completados(st.session_state.perfil, limite=50)
 
 lista_procesada = []
 pedidos_raw = {}
 dias_semana = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO"]
 
-# 5. Ejecuta el bucle directamente con los datos procesados en memoria
+# 3. Procesamos los datos en memoria (Ahora el universo de datos es diminuto)
 for d in pedidos_filtrados:
     id_t = d.get('id_tracking')
     prov = d.get('proveedor', '')
@@ -408,7 +433,9 @@ if lista_procesada:
             row_idx = event.selection.rows[0]
             id_seleccionado = df.iloc[row_idx]['ID']
             abrir_panel_recepcion(id_seleccionado, pedidos_raw[id_seleccionado])
+            
     else:
         st.warning("No se encontraron resultados en la búsqueda.")
+        
 else:
-    st.success(f"No hay pedidos con el estado '{filtro_estado}'.")
+    st.success(f"No hay pedidos en la categoría '{filtro_seleccionado}'.")
