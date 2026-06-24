@@ -419,7 +419,11 @@ if lista_procesada:
     if not df.empty:
         df = df.drop(columns=['Prioridad'])
         
+        # Proteger PDFs nulos para que no den error
         df['ORDEN (PDF)'] = df['ORDEN (PDF)'].apply(lambda x: x if pd.notna(x) and str(x).startswith("http") else None)
+        
+        # 🎨 RESTAURAMOS TUS COLORES DE SEMÁFORO
+        df_styled = df.style.apply(color_filas, axis=1)
         
         column_config = {
             "STATUS": st.column_config.Column(alignment="center"),
@@ -433,15 +437,20 @@ if lista_procesada:
             )
         }
         
-        # --- CORRECCIÓN 2: Pasamos 'df' directamente, ELIMINANDO df_styled ---
+        # PASAMOS df_styled EN LUGAR DE df
         event = st.dataframe(
-            df, 
+            df_styled, 
             use_container_width=True, 
             hide_index=True,
             on_select="rerun",
             selection_mode="single-row",
             column_config=column_config
         )
+        
+        if event and len(event.selection.rows) > 0:
+            row_idx = event.selection.rows[0]
+            id_seleccionado = df.iloc[row_idx]['ID']
+            abrir_panel_recepcion(id_seleccionado, pedidos_raw[id_seleccionado])
         
         if event and len(event.selection.rows) > 0:
             row_idx = event.selection.rows[0]
