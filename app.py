@@ -46,7 +46,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CONEXIÓN A FIREBASE Y BUCKET DE LOGO
+# 2. CONEXIÓN A FIREBASE Y BUCKET DE LOGO/FONDO
 # ==========================================
 @st.cache_resource
 def init_firebase():
@@ -75,6 +75,19 @@ def obtener_url_logo():
 
 logo_url = obtener_url_logo()
 
+# Función para extraer el fondo desde Firebase
+@st.cache_data(ttl=3600)
+def obtener_url_fondo():
+    try:
+        blob = bucket.blob("FONDO WEB ALMACEN.jpg") 
+        if blob.exists():
+            return blob.generate_signed_url(version="v4", expiration=timedelta(days=7))
+    except:
+        pass
+    return ""
+
+fondo_url = obtener_url_fondo()
+
 # ==========================================
 # 3. LOGIN INTELIGENTE
 # ==========================================
@@ -95,14 +108,36 @@ if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
+    
+    # CSS inyectado SOLO en el login con transparencia uniforme
+    if fondo_url:
+        st.markdown(f"""
+            <style>
+            /* Capa uniforme semi-transparente (0.65) sobre la imagen */
+            .stApp {{
+                background-image: linear-gradient(rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0.65)), url("{fondo_url}");
+                background-size: cover;
+                background-position: center;
+                background-repeat: no-repeat;
+                background-attachment: fixed;
+            }}
+            
+            /* Inputs de color blanco sólido para que resalten sobre la foto */
+            div[data-baseweb="select"] > div, div.stTextInput > div > div {{
+                background-color: #ffffff !important;
+                border: 1px solid #cccccc !important;
+            }}
+            </style>
+        """, unsafe_allow_html=True)
+
     st.markdown(f"""
         <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px; margin-top: 20px;">
             <img src="{logo_url}" width="300">
         </div>
     """, unsafe_allow_html=True)
     
-    st.markdown("<h2 style='text-align: center; margin-top: 0px;'>🔐 Acceso de Deposito  (NY-COMPRAS)</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #7f8c8d; margin-top: -10px;'>Selecciona la Usuario</p>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; margin-top: 0px;'>🔐 Acceso de Deposito (NY-COMPRAS)</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #555555; margin-top: -10px; font-weight: bold;'>Selecciona la Usuario</p>", unsafe_allow_html=True)
     
     docs = db.collection('perfiles_cloud').stream()
     perfiles = {doc.id: doc.to_dict() for doc in docs}
@@ -446,16 +481,6 @@ if lista_procesada:
             selection_mode="single-row",
             column_config=column_config
         )
-        
-        if event and len(event.selection.rows) > 0:
-            row_idx = event.selection.rows[0]
-            id_seleccionado = df.iloc[row_idx]['ID']
-            abrir_panel_recepcion(id_seleccionado, pedidos_raw[id_seleccionado])
-        
-        if event and len(event.selection.rows) > 0:
-            row_idx = event.selection.rows[0]
-            id_seleccionado = df.iloc[row_idx]['ID']
-            abrir_panel_recepcion(id_seleccionado, pedidos_raw[id_seleccionado])
         
         if event and len(event.selection.rows) > 0:
             row_idx = event.selection.rows[0]
