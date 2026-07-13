@@ -111,35 +111,39 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in:
     
     if fondo_url:
-        # APLICAMOS EL ESTILO DIRECTAMENTE AL BACKGROUND PRINCIPAL 
-        # Esto soluciona bloqueos de renderizado que tiene el pseudo-elemento ::before en algunas versiones
         st.markdown(f"""
             <style>
             .stApp {{
-                background-image: url("{fondo_url}");
+                /* 
+                   EL TRUCO ESTÁ AQUÍ (linear-gradient): 
+                   Aplica un filtro negro parejo sobre toda la foto. 
+                   El valor '0.4' es la opacidad (40% oscuro). 
+                   - Si la quieres AÚN MÁS opaca, cámbialo a 0.6 o 0.7.
+                   - Si la quieres más clara, bájalo a 0.2. 
+                */
+                background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url("{fondo_url}");
                 background-size: cover;
                 background-position: center;
                 background-repeat: no-repeat;
                 background-attachment: fixed;
-                
-                /* Transición para que no aparezca de golpe */
                 transition: background-image 0.5s ease-in-out;
             }}
             
-            /* Esta caja negra semi-transparente actúa como 'filtro suave' sobre TODA la aplicación,
-               pero manteniendo los colores 100% originales debajo. 
-               Es mucho más estable que ::before */
             .stApp > header {{
                 background-color: transparent !important;
             }}
             
             .block-container {{
-                background-color: rgba(0, 0, 0, 0.45); /* Capa oscura suave, cambia el 0.45 si la quieres más clara/oscura */
-                backdrop-filter: blur(0px); /* Efecto cristal desenfocado profesional */
+                /* Fondo sutil para la caja donde están las contraseñas */
+                background-color: rgba(0, 0, 0, 0.25); 
+                
+                /* Se mantiene en 0px para que la foto siga totalmente nítida */
+                backdrop-filter: blur(0px); 
+                
                 border-radius: 15px;
                 padding: 3rem !important;
                 margin-top: 5vh;
-                box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+                box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
             }}
             </style>
         """, unsafe_allow_html=True)
