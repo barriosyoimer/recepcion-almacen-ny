@@ -135,7 +135,7 @@ if not st.session_state.logged_in:
             
             .block-container {{
                 background-color: rgba(0, 0, 0, 0.45); /* Capa oscura suave, cambia el 0.45 si la quieres más clara/oscura */
-                backdrop-filter: blur(2px); /* Efecto cristal desenfocado profesional */
+                backdrop-filter: blur(0px); /* Efecto cristal desenfocado profesional */
                 border-radius: 15px;
                 padding: 3rem !important;
                 margin-top: 5vh;
