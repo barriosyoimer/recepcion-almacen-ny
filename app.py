@@ -79,7 +79,8 @@ logo_url = obtener_url_logo()
 @st.cache_data(ttl=3600)
 def obtener_url_fondo():
     try:
-        blob = bucket.blob("FONDO WEB ALMACEN.jpg") 
+        # ¡Aquí está el cambio clave! De .jpg a .png
+        blob = bucket.blob("FONDO WEB ALMACEN.png") 
         if blob.exists():
             return blob.generate_signed_url(version="v4", expiration=timedelta(days=7))
     except:
