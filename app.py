@@ -121,7 +121,7 @@ if not st.session_state.logged_in:
                    - Si la quieres AÚN MÁS opaca, cámbialo a 0.6 o 0.7.
                    - Si la quieres más clara, bájalo a 0.2. 
                 */
-                background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url("{fondo_url}");
+                background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)), url("{fondo_url}");
                 background-size: cover;
                 background-position: center;
                 background-repeat: no-repeat;
