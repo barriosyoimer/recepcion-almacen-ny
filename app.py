@@ -110,23 +110,34 @@ if "logged_in" not in st.session_state:
 
 if not st.session_state.logged_in:
     
-    # CSS inyectado SOLO en el login con transparencia uniforme
+    # NUEVO CSS: Transparencia pura sin pintura blanca y con efecto "suave"
     if fondo_url:
         st.markdown(f"""
             <style>
-            /* Capa uniforme semi-transparente (0.65) sobre la imagen */
-            .stApp {{
-                background-image: linear-gradient(rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0.65)), url("{fondo_url}");
+            /* Usamos ::before para crear una capa exclusiva para la foto.
+               Esto permite mantener los colores 100% originales pero aplicarle 
+               transparencia pura y suavidad sin estropear el tema de tu app */
+            .stApp::before {{
+                content: "";
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background-image: url("{fondo_url}");
                 background-size: cover;
                 background-position: center;
                 background-repeat: no-repeat;
-                background-attachment: fixed;
-            }}
-            
-            /* Inputs de color blanco sólido para que resalten sobre la foto */
-            div[data-baseweb="select"] > div, div.stTextInput > div > div {{
-                background-color: #ffffff !important;
-                border: 1px solid #cccccc !important;
+                
+                /* 1. OPACIDAD: 0.5 significa 50% transparente. 
+                   Súbelo a 0.8 si la quieres más fuerte, o bájalo a 0.3 si la quieres más sutil */
+                opacity: 0.5; 
+                
+                /* 2. SUAVIDAD: Aplica un desenfoque sutil a la foto para que no 
+                   distraiga la vista de las credenciales de acceso */
+                filter: blur(4px); 
+                
+                z-index: -1;
             }}
             </style>
         """, unsafe_allow_html=True)
@@ -138,7 +149,7 @@ if not st.session_state.logged_in:
     """, unsafe_allow_html=True)
     
     st.markdown("<h2 style='text-align: center; margin-top: 0px;'>🔐 Acceso de Deposito (NY-COMPRAS)</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #555555; margin-top: -10px; font-weight: bold;'>Selecciona la Usuario</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #7f8c8d; margin-top: -10px; font-weight: bold;'>Selecciona el Usuario</p>", unsafe_allow_html=True)
     
     docs = db.collection('perfiles_cloud').stream()
     perfiles = {doc.id: doc.to_dict() for doc in docs}
