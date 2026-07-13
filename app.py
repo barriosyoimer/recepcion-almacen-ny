@@ -75,15 +75,15 @@ def obtener_url_logo():
 
 logo_url = obtener_url_logo()
 
-# Función para extraer el fondo desde Firebase
-@st.cache_data(ttl=3600)
+# MODIFICACIÓN CRÍTICA: Eliminamos st.cache_data temporalmente aquí para obligar 
+# a la app a traer una nueva URL fresca directo desde Firebase, evitando enlaces rotos.
 def obtener_url_fondo():
     try:
-        # ¡Aquí está el cambio clave! De .jpg a .png
         blob = bucket.blob("FONDO WEB ALMACEN.png") 
         if blob.exists():
-            return blob.generate_signed_url(version="v4", expiration=timedelta(days=7))
-    except:
+            return blob.generate_signed_url(version="v4", expiration=timedelta(days=1))
+    except Exception as e:
+        print(f"Error cargando fondo: {e}") # Para depuración si miras la consola
         pass
     return ""
 
@@ -110,46 +110,48 @@ if "logged_in" not in st.session_state:
 
 if not st.session_state.logged_in:
     
-    # NUEVO CSS: Transparencia pura sin pintura blanca y con efecto "suave"
     if fondo_url:
+        # APLICAMOS EL ESTILO DIRECTAMENTE AL BACKGROUND PRINCIPAL 
+        # Esto soluciona bloqueos de renderizado que tiene el pseudo-elemento ::before en algunas versiones
         st.markdown(f"""
             <style>
-            /* Usamos ::before para crear una capa exclusiva para la foto.
-               Esto permite mantener los colores 100% originales pero aplicarle 
-               transparencia pura y suavidad sin estropear el tema de tu app */
-            .stApp::before {{
-                content: "";
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100vw;
-                height: 100vh;
+            .stApp {{
                 background-image: url("{fondo_url}");
                 background-size: cover;
                 background-position: center;
                 background-repeat: no-repeat;
+                background-attachment: fixed;
                 
-                /* 1. OPACIDAD: 0.5 significa 50% transparente. 
-                   Súbelo a 0.8 si la quieres más fuerte, o bájalo a 0.3 si la quieres más sutil */
-                opacity: 0.8; 
-                
-                /* 2. SUAVIDAD: Aplica un desenfoque sutil a la foto para que no 
-                   distraiga la vista de las credenciales de acceso */
-                filter: blur(4px); 
-                
-                z-index: -1;
+                /* Transición para que no aparezca de golpe */
+                transition: background-image 0.5s ease-in-out;
+            }}
+            
+            /* Esta caja negra semi-transparente actúa como 'filtro suave' sobre TODA la aplicación,
+               pero manteniendo los colores 100% originales debajo. 
+               Es mucho más estable que ::before */
+            .stApp > header {{
+                background-color: transparent !important;
+            }}
+            
+            .block-container {{
+                background-color: rgba(0, 0, 0, 0.45); /* Capa oscura suave, cambia el 0.45 si la quieres más clara/oscura */
+                backdrop-filter: blur(5px); /* Efecto cristal desenfocado profesional */
+                border-radius: 15px;
+                padding: 3rem !important;
+                margin-top: 5vh;
+                box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
             }}
             </style>
         """, unsafe_allow_html=True)
 
     st.markdown(f"""
-        <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px; margin-top: 20px;">
+        <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px; margin-top: 10px;">
             <img src="{logo_url}" width="300">
         </div>
     """, unsafe_allow_html=True)
     
     st.markdown("<h2 style='text-align: center; margin-top: 0px;'>🔐 Acceso de Deposito (NY-COMPRAS)</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #7f8c8d; margin-top: -10px; font-weight: bold;'>Selecciona el Usuario</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #a0aab5; margin-top: -10px; font-weight: bold;'>Selecciona el Usuario</p>", unsafe_allow_html=True)
     
     docs = db.collection('perfiles_cloud').stream()
     perfiles = {doc.id: doc.to_dict() for doc in docs}
