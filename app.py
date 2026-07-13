@@ -131,7 +131,7 @@ if not st.session_state.logged_in:
                 
                 /* 1. OPACIDAD: 0.5 significa 50% transparente. 
                    Súbelo a 0.8 si la quieres más fuerte, o bájalo a 0.3 si la quieres más sutil */
-                opacity: 0.5; 
+                opacity: 0.8; 
                 
                 /* 2. SUAVIDAD: Aplica un desenfoque sutil a la foto para que no 
                    distraiga la vista de las credenciales de acceso */
